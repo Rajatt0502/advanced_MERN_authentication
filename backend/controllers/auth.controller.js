@@ -126,30 +126,48 @@ export const logout = async (req, res) => {
 };
 
 export const forgotPassword = async (req, res) => {
-	const { email } = req.body;
 	try {
-		const user = await User.findOne({ email });
+		const { email } = req.body;
 
+		// Debug
+		console.log("Incoming email:", email);
+
+		if (!email) {
+			return res.status(400).json({ message: "Email is required" });
+		}
+
+		const user = await User.findOne({
+			email: email.toLowerCase().trim(),
+		});
+
+		// 🔥 IMPORTANT: don't expose if user exists
 		if (!user) {
-			return res.status(400).json({ success: false, message: "User not found" });
+			return res.status(200).json({
+				success: true,
+				message: "If an account exists, a reset link will be sent",
+			});
 		}
 
 		// Generate reset token
-		const resetToken = crypto.randomBytes(20).toString("hex");
-		const resetTokenExpiresAt = Date.now() + 1 * 60 * 60 * 1000; // 1 hour
+		const resetToken = crypto.randomBytes(32).toString("hex");
 
 		user.resetPasswordToken = resetToken;
-		user.resetPasswordExpiresAt = resetTokenExpiresAt;
+		user.resetPasswordExpiresAt = Date.now() + 10 * 60 * 1000; // 10 min
 
 		await user.save();
 
-		// send email
-		await sendPasswordResetEmail(user.email, `${process.env.CLIENT_URL}/reset-password/${resetToken}`);
+		const resetURL = `http://localhost:5173/reset-password/${resetToken}`;
 
-		res.status(200).json({ success: true, message: "Password reset link sent to your email" });
+		// Send email
+		await sendPasswordResetEmail(user.email, resetURL);
+
+		res.status(200).json({
+			success: true,
+			message: "Password reset link sent",
+		});
 	} catch (error) {
-		console.log("Error in forgotPassword ", error);
-		res.status(400).json({ success: false, message: error.message });
+		console.error("Error in forgotPassword:", error);
+		res.status(500).json({ message: "Server error" });
 	}
 };
 
